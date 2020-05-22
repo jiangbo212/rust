@@ -1,0 +1,50 @@
+language: rust
+cache: cargo
+matrix:
+  include:
+  - os: linux
+    rust: stable
+    env: TARGET=x86_64-unknown-linux-gnu
+  - os: linux
+    rust: stable
+    env: TARGET=x86_64-unknown-linux-musl
+  - os: linux
+    rust: stable
+    env: TARGET=i686-unknown-linux-musl
+  - os: osx
+    rust: stable
+    env: TARGET=x86_64-apple-darwin
+  - os: linux
+    rust: 1.33.0
+    env: TARGET=x86_64-unknown-linux-gnu
+  - os: linux
+    rust: 1.33.0
+    env: TARGET=x86_64-unknown-linux-musl
+  - os: linux
+    rust: 1.33.0
+    env: TARGET=i686-unknown-linux-musl
+  - os: osx
+    rust: 1.33.0
+    env: TARGET=x86_64-apple-darwin
+env:
+  global:
+  - HOST=x86_64-unknown-linux-gnu
+  - PROJECT_NAME=rust_init
+install:
+- if [[ $TRAVIS_OS_NAME = linux && $HOST != $TARGET ]]; then rustup target add $TARGET;
+  fi
+script:
+- cargo build --target $TARGET --verbose
+- cargo test --target $TARGET --verbose
+deploy:
+  provider: releases
+  api_key:
+    secure: Cf3zEAviaPiiMsdfEI7RaQvqGqoIwsQ2lCEZdBQ19rM+SvbHbZxCpLISPJRcKViKlSJHczGAHb65cnmjE32IIIoH43VV6GpQ8cq4va+rWr9X3w3PNAcqVTK6i+aJrzfoN71l2aiXAdH9Tpx42697ktCGPFIrBiyfbnjlwhRCHNK6lg/0lPaAaMsIhd/6VgSt0sTgQ2Htlh22j1Byc9kiFIii/ZJkMppk2qwmHfM0ay8bOjabR9EPgXEdbkjaH0neICEFNctYtog/NoTLe3hn5IpZQAwf6P+0fGIzl8NjLWFAI0iEpQMSXd1D28E1GWzBcD0uleAf3JvxHySUiLDD3AeWenjqdLFw8zGCSQ+OyzgsGtuFGnoh0kbqWnlqTsVyPehUToSBDKapnwZPfo8+2teEOXEug4bwHjA+Wdh4bhldaidU+36SjjZ+Zb2s/WApWYHPyhiNqbvga6u4La6xbxUSCTz01L6tLu800SaujeciHKtnmqLggrPd3QsbuusAuQfxJNkuVAx6RwG0Tr6CDuLzNtMAiWZ6Iyk1wu11SSxzTiOzcY1qw89aRorKfXPVrsu69Pj88neRPUlQcibpaF+chn0pozkkxqeCDjFyjt+TjXlkxWquobXj+qRFus7J1nudAsns4ovxxnl9TdJe4XX3yWGZje47j0q1C7K7UfY=
+  file_glob: true
+  file: "/home/travis/build/jiangbo212/rust_init/target/$TARGET/debug/deps/hello_world*"
+  skip_cleanup: true
+  on:
+    branch: master
+notifications:
+  email:
+    on_success: never
