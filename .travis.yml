@@ -14,21 +14,9 @@ matrix:
   - os: osx
     rust: stable
     env: TARGET=x86_64-apple-darwin
-  - os: linux
-    rust: 1.33.0
-    env: TARGET=x86_64-unknown-linux-gnu
-  - os: linux
-    rust: 1.33.0
-    env: TARGET=x86_64-unknown-linux-musl
-  - os: linux
-    rust: 1.33.0
-    env: TARGET=i686-unknown-linux-musl
-  - os: osx
-    rust: 1.33.0
-    env: TARGET=x86_64-apple-darwin
 env:
   global:
-  - HOST=x86_64-unknown-linux-gnu
+  - TARGET=x86_64-unknown-linux-musl
   - PROJECT_NAME=rust
 install:
 - if [[ $TRAVIS_OS_NAME = linux && $HOST != $TARGET ]]; then rustup target add $TARGET;
@@ -36,7 +24,8 @@ install:
 script:
 - cargo build --target $TARGET --verbose
 - cargo test --target $TARGET --verbose
-- tar -czvf target/$TARGET/debug/rust-$TARGET.tar.gz target/$TARGET/debug/rust
+- cd target/$TARGET/debug/
+- tar -czvf rust-$TARGET.tar.gz rust
 deploy:
   provider: releases
   api_key:
