@@ -24,8 +24,7 @@ install:
 script:
 - cargo build --target $TARGET --verbose
 - cargo test --target $TARGET --verbose
-- cd target/$TARGET/debug | tar -czvf rust rust-$TARGET.tar.gz
-- tar -czvf rust-$TARGET.tar.gz rust
+- cd target/$TARGET/debug | tar -czvf rust-$TARGET.tar.gz rust
 deploy:
   provider: releases
   api_key:
