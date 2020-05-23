@@ -24,13 +24,13 @@ install:
 script:
 - cargo build --target $TARGET --verbose
 - cargo test --target $TARGET --verbose
-- cd target/$TARGET/debug/
+- cd target/$TARGET/debug | tar -czvf rust rust-$TARGET.tar.gz
 - tar -czvf rust-$TARGET.tar.gz rust
 deploy:
   provider: releases
   api_key:
     secure: BlbrKWtO5XLCz5PjkoQe1i//0X7btQnswf8vU/hu+JsE9HKAqNooTHronatr3doIR99u6gfednYf7KXCyxPe5um17IACbidw6HVgaVshlCH59BvUyv6A/mNsYTUyYu7P5bYexvTz7QsxkMObCUfoHSsdeIrF/lJ2DWTBKPABBN9AyVxSvvHU0CpQ/LVP9Ov88bo8M6wACCOp73jRp+P3Qy6OHvJE9lnB20fpon+TxyLTRWlChb6uhMxhzsfmJDwgvs1jIA8/Y9TuayyHavyFbnxuj9+IpYL6Hy5t/H8ngTolBxNpWh+LxfzcYzKkH2oDyQIwwZ70CsC3r649AkAiIMOBunqbajV0MFmDTcvfj5nBz7T18aaopaoSH2ILdkEPrN1TWhhQIVg9nfbOYWWtHjL3VpOLvLC/jSPNLXu8yjsPEQo4WCynqMxu9UBVC9ZY4KFhRN+yvy+ERH3THu5r1cgOl7ya4eIwzcpz2rAwbwG9Eb4VWd7ke4ZeQBLVRuGwSvTVb356qQ3a9OttOhakpvAs6JczoHgF1j9lypXScNZQaA9h13TQfrUtiGPCqBkVRqtKT/u9NqZviWHQPop6uey/V0Ln0SGLBAL5+DsH9oE+ow0EzDpW7a7uoIW0gl27qWyUOgivDb/ZTlpusqxYX0zH7wPP+sDv2zGkmWAqbhg=
-  file: target/$TARGET/debug/rust-$TARGET.tar.gz
+  file: rust-$TARGET.tar.gz
   on:
     repo: jiangbo212/rust
   skip_cleanup: 'true'
