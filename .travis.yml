@@ -10,7 +10,7 @@ matrix:
     env: TARGET=x86_64-unknown-linux-musl
   - os: windows
     rust: stable
-    env: TARGET=windows-server-1809
+    env: TARGET=x86_64-pc-windows-gnu
   - os: osx
     rust: stable
     env: TARGET=x86_64-apple-darwin
