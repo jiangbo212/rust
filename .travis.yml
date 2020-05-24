@@ -8,9 +8,9 @@ matrix:
   - os: linux
     rust: stable
     env: TARGET=x86_64-unknown-linux-musl
-  - os: linux
+  - os: windows
     rust: stable
-    env: TARGET=i686-unknown-linux-musl
+    env: TARGET=windows-server-1809
   - os: osx
     rust: stable
     env: TARGET=x86_64-apple-darwin
