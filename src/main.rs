@@ -1,7 +1,7 @@
 use std::env;
 use serde:: {Serialize, Deserialize};
 use serde_json::from_str;
-use std::fs::{File};
+use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use chrono::{Utc, DateTime, TimeZone};
 
@@ -9,8 +9,8 @@ use chrono::{Utc, DateTime, TimeZone};
 struct Config {
     oracle_url: String,
     oracle_username: String,
-    oracle_password: i32,
-    mysql_url: bool,
+    oracle_password: String,
+    mysql_url: String,
 }
 
 
@@ -50,7 +50,7 @@ fn main() {
     let yesterday: DateTime<Utc> = Utc.timestamp_millis(now.timestamp_millis() - 24 * 3600 * 1000);
     let yesterday_str: String = yesterday.format(&date_formatter).to_string();
     println!("昨日日期：{}", yesterday_str);
-    let mut  file: File = File::open("last_run.ini").unwrap_or_else(|error| {
+    let mut  file: File = OpenOptions::new().read(true).write(true).open("last_run.ini").unwrap_or_else(|error| {
         println!("读取文件last_run.ini异常, {}", error);
         println!("开始创建last_run.ini文件");
         let new_file: File = File::create("last_run.ini").unwrap_or_else( |err|{
@@ -60,12 +60,9 @@ fn main() {
         return new_file;
     });
 
-    file.write_all(b"123").unwrap_or_else(|e| {
+    // 只能覆盖写入的字符长度
+    file.write(now_str.as_bytes()).unwrap_or_else(|e| {
         panic!("写入最后运行日期异常, {}", e);
-    });
-
-    file.sync_all().unwrap_or_else(|error| {
-        panic!("写入最后一次运行时间异常, {}", error);
     });
 
     println!("-------完成读取脚本最后一次运行时间----------");
