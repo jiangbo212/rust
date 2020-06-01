@@ -4,6 +4,9 @@ use serde_json::from_str;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use chrono::{Utc, DateTime, TimeZone};
+use oracle::Connection as OracleConnection;
+use mysql::{PooledConn, Pool, Params};
+use mysql::prelude::Queryable;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Config {
@@ -11,8 +14,14 @@ struct Config {
     oracle_username: String,
     oracle_password: String,
     mysql_url: String,
+    merchant_sql: Vec<MerchantSql>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct MerchantSql {
+    query_sql: String,
+    insert_sql: String,
+}
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -60,11 +69,62 @@ fn main() {
         return new_file;
     });
 
+    let oracle_conn = oracle_conn(&config);
+    let mut mysql_conn = mysql_conn(&config);
+
+    for merchant in &config.merchant_sql {
+        oracle_to_mysql(&oracle_conn,  &mut mysql_conn, &merchant.query_sql, &merchant.insert_sql);
+    }
+
     // 只能覆盖写入的字符长度
     file.write(now_str.as_bytes()).unwrap_or_else(|e| {
         panic!("写入最后运行日期异常, {}", e);
     });
 
     println!("-------完成读取脚本最后一次运行时间----------");
+
+}
+
+// 获取oracle连接
+fn oracle_conn(config: &Config) -> OracleConnection {
+    let conn: OracleConnection = OracleConnection::connect(&config.oracle_username, &config.oracle_password, &config.oracle_url)
+        .unwrap_or_else(|err| {
+            panic!("建立oracle连接失败，连接信息：username:{}, password:{}, url:{}. 错误信息:{}", &config.oracle_username, &config.oracle_password, &config.oracle_url, err);
+        });
+    return conn;
+}
+
+// 获取mysql连接
+fn mysql_conn(config: &Config) -> PooledConn {
+    let pool = Pool::new(&config.mysql_url).unwrap_or_else(|err| {
+        panic!("创建mysql连接失败，连接信息：{}, 错误信息:{}", &config.mysql_url, err);
+    });
+    let conn = pool.get_conn().unwrap_or_else(|err| {
+        panic!("从mysql连接池获取连接异常，{}", err);
+    });
+    return conn;
+}
+
+fn oracle_to_mysql(oracle_conn: &OracleConnection, mysql_conn: &mut PooledConn, query_sql: &String, insert_sql: &String) {
+    let rows = oracle_conn.query(query_sql, &[]).unwrap_or_else(|err| {
+        panic!("查询sql:{}异常，{}", query_sql, err);
+    });
+
+    let mut vec: Vec<Params> = Vec::new();
+    let len:usize = rows.column_info().len();
+    for row_result in rows {
+        let mut param = Vec::new();
+        let row = row_result.unwrap();
+        for number in 0..len {
+            let value: String = row.get(number).unwrap_or(String::from(""));
+            param.push(value);
+        }
+        let params:Params = Params::from(param);
+        vec.push(params);
+    }
+
+    mysql_conn.exec_batch(insert_sql, vec).unwrap_or_else(|err| {
+        panic!("写入mysql系统异常，{}", err);
+    });
 
 }

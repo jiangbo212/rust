@@ -10,3 +10,5 @@ edition = "2018"
 serde_json = "1.0.53"
 serde =  { version = "1.0.111", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
+oracle = { version = "0.3.0", features = ["chrono"] }
+mysql = "*"
