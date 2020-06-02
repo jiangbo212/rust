@@ -80,20 +80,23 @@ fn main() {
         return new_file;
     });
 
-    let nexus_oracle_conn = oracle_conn(&config.nexus_oracle_url, &config.nexus_oracle_username, &config.nexus_oracle_password);
+    let mut nexus_oracle_conn = oracle_conn(&config.nexus_oracle_url, &config.nexus_oracle_username, &config.nexus_oracle_password);
     let mut mysql_conn = mysql_conn(&config);
 
     // 同步商户信息
     for merchant in &config.merchant_sql {
-        oracle_to_mysql(&nexus_oracle_conn,  &mut mysql_conn, &merchant.query_sql, &merchant.insert_sql);
+        oracle_to_mysql(&mut nexus_oracle_conn,  &mut mysql_conn, &merchant.query_sql, &merchant.insert_sql, &Vec::new());
     }
 
-    // 同步交易信息
+    // // 同步交易信息
+    let mut rcontrol_oracle_conn = oracle_conn(&config.rcontrol_oracle_url, &config.rcontrol_oracle_username, &config.rcontrol_oracle_password);
     for trade in &config.trade_sql {
-        let new_query_sql_vec = condition_oracle_to_mysql(&nexus_oracle_conn,  &trade.condition_sql, &trade.query_sql);
-        let rcontrol_oracle_conn = oracle_conn(&config.rcontrol_oracle_url, &config.rcontrol_oracle_username, &config.rcontrol_oracle_password);
-        for query_sql in new_query_sql_vec {
-            oracle_to_mysql(&rcontrol_oracle_conn, &mut mysql_conn, &query_sql, &trade.insert_sql);
+        let merchants = merchants_info(&nexus_oracle_conn,  &trade.condition_sql);
+        for mut merchant in merchants {
+            let merchant_code = merchant.get(0).unwrap();
+            let new_query_sql = &trade.query_sql.replace(&String::from("mer_code"), &merchant_code);
+            merchant.remove(0);
+            oracle_to_mysql(&mut rcontrol_oracle_conn, &mut mysql_conn, &new_query_sql, &trade.insert_sql, &merchant);
         }
     }
 
@@ -126,7 +129,11 @@ fn mysql_conn(config: &Config) -> PooledConn {
     return conn;
 }
 
-fn oracle_to_mysql(oracle_conn: &OracleConnection, mysql_conn: &mut PooledConn, query_sql: &String, insert_sql: &String) {
+fn oracle_to_mysql(oracle_conn: &mut OracleConnection,
+                   mysql_conn: &mut PooledConn,
+                   query_sql: &String,
+                   insert_sql: &String,
+                   insert_condition: &Vec<String>) {
     let rows = oracle_conn.query(query_sql, &[]).unwrap_or_else(|err| {
         panic!("查询sql:{}异常，{}", query_sql, err);
     });
@@ -134,7 +141,7 @@ fn oracle_to_mysql(oracle_conn: &OracleConnection, mysql_conn: &mut PooledConn, 
     let mut vec: Vec<Params> = Vec::new();
     let len:usize = rows.column_info().len();
     for row_result in rows {
-        let mut param = Vec::new();
+        let mut param = insert_condition.clone();
         let row = row_result.unwrap();
         for number in 0..len {
             let value: String = row.get(number).unwrap_or(String::from(""));
@@ -151,31 +158,25 @@ fn oracle_to_mysql(oracle_conn: &OracleConnection, mysql_conn: &mut PooledConn, 
     }
 }
 
-fn condition_oracle_to_mysql(oracle_conn: &OracleConnection,
-                             condition_sql: &String,
-                             query_sql:&String) -> Vec<String> {
+fn merchants_info(oracle_conn: &OracleConnection, condition_sql: &String) -> Vec<Vec<String>> {
     let merchant_rows = oracle_conn.query(condition_sql, &[]).unwrap_or_else(|err| {
-        panic!("查询nexus系统商户异常, sql:{}, 异常信息:{}", condition_sql, err);
+        panic!("查询商户异常, sql:{}, 异常信息:{}", condition_sql, err);
     });
 
-    let mut  new_query_sql_vec = Vec::new();
-    let mut  merchants: Vec<String> = Vec::new();
+    let mut  merchants: Vec<Vec<String>> = Vec::new();
+    let len = merchant_rows.column_info().len();
     for row_result in merchant_rows {
+        let mut merchant = Vec::new();
         let row = row_result.unwrap();
-        let merchant:String = row.get(0).unwrap_or(String::from("_"));
-        merchants.push(merchant);
-        if merchants.len() == 500 {
-            let temp_merchants = merchants.clone();
-            merchants.clear();
-            let new_query_sql = query_sql.replace(&String::from("merchants"), &temp_merchants.join(&String::from("','")));
-            println!("交易查询sql:{}", &new_query_sql);
-            new_query_sql_vec.push(new_query_sql);
+        for  number in 0..len {
+            let mut value: String = row.get(number).unwrap_or(String::from(""));
+            // 商户号默认_
+            if number == 0 {
+                value = row.get(number).unwrap_or(String::from("_"));
+            }
+            merchant.push(value);
         }
+        merchants.push(merchant);
     }
-    if merchants.len() > 0 {
-        let new_query_sql = query_sql.replace(&String::from("merchants"), &merchants.join(&String::from("','")));
-        println!("交易查询sql:{}", new_query_sql);
-        new_query_sql_vec.push(new_query_sql);
-    }
-    return new_query_sql_vec;
+    return merchants;
 }
