@@ -1,8 +1,9 @@
 use std::env;
+use std::fs;
 use serde:: {Serialize, Deserialize};
 use serde_json::from_str;
 use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{Read};
 use chrono::{Utc, DateTime, TimeZone};
 use oracle::Connection as OracleConnection;
 use mysql::{PooledConn, Pool, Params};
@@ -35,6 +36,9 @@ struct TradeSql {
 }
 
 fn main() {
+    let merchant_last_file_name:String = String::from("merchant_last_run.ini");
+    let trade_last_file_name:String = String::from("trade_last_run.ini");
+
     let args: Vec<String> = env::args().collect();
     println!("------开始读取配置文件-------");
 
@@ -62,51 +66,69 @@ fn main() {
     println!("配置文件详情：{:#?}", config);
     println!("-------配置文件读取完成---------");
 
-    println!("-------开始读取脚本最后一次运行时间----------");
-    let date_formatter: String = String::from("%Y-%m-%d");
+
+    let nexus_oracle_conn = oracle_conn(&config.nexus_oracle_url, &config.nexus_oracle_username, &config.nexus_oracle_password);
+    let mut mysql_conn = mysql_conn(&config);
+
+    let date_formatter: String = String::from("%Y-%m-%d %H:%M:%S");
     let now: DateTime<Utc> = Utc::now();
     let now_str:String = now.format(&date_formatter).to_string();
     println!("当前日期：{}", now_str);
-    let yesterday: DateTime<Utc> = Utc.timestamp_millis(now.timestamp_millis() - 24 * 3600 * 1000);
-    let yesterday_str: String = yesterday.format(&date_formatter).to_string();
-    println!("昨日日期：{}", yesterday_str);
-    let mut  file: File = OpenOptions::new().read(true).write(true).open("last_run.ini").unwrap_or_else(|error| {
-        println!("读取文件last_run.ini异常, {}", error);
-        println!("开始创建last_run.ini文件");
-        let new_file: File = File::create("last_run.ini").unwrap_or_else( |err|{
-            panic!("创建文件last_run.ini异常, {}", err);
-        });
-        println!("创建last_run_ini文件成功");
-        return new_file;
-    });
 
-    let mut nexus_oracle_conn = oracle_conn(&config.nexus_oracle_url, &config.nexus_oracle_username, &config.nexus_oracle_password);
-    let mut mysql_conn = mysql_conn(&config);
-
+    println!("---------开始同步商户信息----------");
+    // 获取最近一次商户同步时间
+    let merchant_last_run_time: String = get_last_run_time(&merchant_last_file_name);
+    println!("最近一次商户同步时间:{}", &merchant_last_run_time);
     // 同步商户信息
     for merchant in &config.merchant_sql {
-        oracle_to_mysql(&mut nexus_oracle_conn,  &mut mysql_conn, &merchant.query_sql, &merchant.insert_sql, &Vec::new());
+        let new_query_sql =&merchant.query_sql.replace(&String::from("last_update_time"), &merchant_last_run_time);
+        oracle_to_mysql(&nexus_oracle_conn, &mut mysql_conn, &new_query_sql, &merchant.insert_sql, &Vec::new());
     }
 
-    // // 同步交易信息
-    let mut rcontrol_oracle_conn = oracle_conn(&config.rcontrol_oracle_url, &config.rcontrol_oracle_username, &config.rcontrol_oracle_password);
-    for trade in &config.trade_sql {
-        let merchants = merchants_info(&nexus_oracle_conn,  &trade.condition_sql);
-        for mut merchant in merchants {
-            let merchant_code = merchant.get(0).unwrap();
-            let new_query_sql = &trade.query_sql.replace(&String::from("mer_code"), &merchant_code);
-            merchant.remove(0);
-            oracle_to_mysql(&mut rcontrol_oracle_conn, &mut mysql_conn, &new_query_sql, &trade.insert_sql, &merchant);
+    fs::write(&merchant_last_file_name, &now_str).unwrap();
+    println!("---------同步商户信息结束----------");
+
+    println!("---------开始同步交易信息----------");
+    // 获取最后一次交易同步时间
+    let trade_last_run_time:String = get_last_run_time(&trade_last_file_name);
+    println!("最近一次交易同步时间:{}", &trade_last_run_time);
+    let mut runtime: DateTime<Utc> = Utc.datetime_from_str(&trade_last_run_time, &date_formatter).unwrap();
+    while now.timestamp_millis() > runtime.timestamp_millis() {
+        let start_time_str: String = runtime.format(&date_formatter).to_string();
+        runtime = Utc.timestamp_millis(runtime.timestamp_millis() + 24 * 3600 * 1000);
+        let mut end_time_str:String = runtime.format(&date_formatter).to_string();
+        if now.timestamp_millis() < runtime.timestamp_millis() {
+            end_time_str = now.format(&date_formatter).to_string();
+        }
+        println!("交易同步开始, {} ~ {}", start_time_str, end_time_str);
+        // 同步交易信息
+        let mut rcontrol_oracle_conn = oracle_conn(&config.rcontrol_oracle_url, &config.rcontrol_oracle_username, &config.rcontrol_oracle_password);
+        for trade in &config.trade_sql {
+            let merchants = merchants_info(&nexus_oracle_conn,  &trade.condition_sql);
+            for mut merchant in merchants {
+                let merchant_code = merchant.get(0).unwrap();
+                let new_query_sql = &trade.query_sql
+                    .replace(&String::from("mer_code"), &merchant_code)
+                    .replace(&String::from("st_time"), &start_time_str)
+                    .replace(&String::from("ed_time"), &end_time_str);
+                merchant.remove(0);
+                oracle_to_mysql(&mut rcontrol_oracle_conn, &mut mysql_conn, &new_query_sql, &trade.insert_sql, &merchant);
+            }
         }
     }
-
-    // 只能覆盖写入的字符长度
-    file.write(now_str.as_bytes()).unwrap_or_else(|e| {
-        panic!("写入最后运行日期异常, {}", e);
-    });
+    fs::write(&trade_last_file_name, &now_str).unwrap();
+    println!("---------同步交易信息结束----------");
 
     println!("-------完成读取脚本最后一次运行时间----------");
+}
 
+fn get_last_run_time(last_run_file_name: &String) -> String {
+    let mut merchant_last_file: File = OpenOptions::new().read(true).write(true).create(true).open(last_run_file_name).unwrap();
+    let mut last_update_time:String = String::new();
+    merchant_last_file.read_to_string(&mut last_update_time).unwrap_or_else(|err| {
+        panic!("读文件异常,文件名:{},异常信息:{}", last_run_file_name, err);
+    });
+    return last_update_time;
 }
 
 // 获取oracle连接
@@ -129,11 +151,12 @@ fn mysql_conn(config: &Config) -> PooledConn {
     return conn;
 }
 
-fn oracle_to_mysql(oracle_conn: &mut OracleConnection,
+fn oracle_to_mysql(oracle_conn: &OracleConnection,
                    mysql_conn: &mut PooledConn,
                    query_sql: &String,
                    insert_sql: &String,
                    insert_condition: &Vec<String>) {
+    // println!("query_sql:{}", query_sql);
     let rows = oracle_conn.query(query_sql, &[]).unwrap_or_else(|err| {
         panic!("查询sql:{}异常，{}", query_sql, err);
     });

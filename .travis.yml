@@ -19,7 +19,7 @@ install:
 - if [[ $TRAVIS_OS_NAME = linux && $HOST != $TARGET ]]; then rustup target add $TARGET;
   fi
 script:
-- cargo build --target $TARGET --verbose
+- cargo build --release --target $TARGET --verbose
 - cargo test --target $TARGET --verbose
 - tar -czvf target/$TARGET/debug/rust-$TARGET.tar.gz target/$TARGET/debug/rust
 deploy:
